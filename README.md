@@ -20,6 +20,7 @@ pi install /path/to/pi-sticky-prompt     # keep it installed
 - **Fullscreen mode only.** In regular mode, the terminal owns scrollback, so Pi never sees scrolling and an extension cannot follow it. The bar is not created in regular mode, because overlays also change how regular mode renders.
 - **Mode switching.** Pi refuses to change TUI mode while any overlay exists. The bar removes itself while the settings list has focus and comes back after you close it.
 - **Pi internals.** Pi's extension API has no scroll event and does not expose prompt positions. The extension reads three internal values on each frame: `viewportTop` on the fullscreen renderer, the transcript container mounted first in the TUI, and the cached per-child render output of each `Container`. If a future Pi changes any of them, the bar shows nothing; it does not throw an error. All of these reads are in `src/transcript.ts`.
+- **Selection and scrollbar.** Pi's fullscreen renderer treats any visible overlay as modal when you start a text selection or use the scrollbar, even a non-capturing one. The selection then would not auto-scroll past the edges, and the scrollbar would ignore hover and drag. While the bar is shown, the extension replaces the renderer's `hasOverlay()` with a version that skips the bar and still sees every other overlay (`src/overlay-compat.ts`). If Pi's internals differ, it falls back to Pi's own method. The scrollbar still cannot be grabbed on the two rows the bar covers.
 
 ## How it works
 

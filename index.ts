@@ -1,6 +1,7 @@
 import { UserMessageComponent, type ExtensionAPI, type ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { SettingsList, type Component, type TUI } from "@earendil-works/pi-tui";
 import { StickyPromptBar } from "./src/bar.ts";
+import { ignoreStickyBarInHasOverlay, markStickyBar } from "./src/overlay-compat.ts";
 
 const isPrompt = (component: Component): boolean => component instanceof UserMessageComponent;
 
@@ -39,6 +40,8 @@ export default function stickyPrompt(pi: ExtensionAPI): void {
 			.custom<void>(
 				(renderer, theme, _keybindings, done) => {
 					tui = renderer;
+					// Keep transcript selection and the scrollbar working while the bar is shown.
+					ignoreStickyBarInHasOverlay(renderer);
 					let closed = false;
 					finish = () => {
 						if (closed) return;
@@ -48,11 +51,13 @@ export default function stickyPrompt(pi: ExtensionAPI): void {
 					close = finish;
 					opening = false;
 					if (!wanted()) queueMicrotask(sync);
-					return new StickyPromptBar(renderer, theme, isPrompt, () => {
-						if (wanted()) return true;
-						queueMicrotask(sync);
-						return false;
-					});
+					return markStickyBar(
+						new StickyPromptBar(renderer, theme, isPrompt, () => {
+							if (wanted()) return true;
+							queueMicrotask(sync);
+							return false;
+						}),
+					);
 				},
 				{ overlay: true, overlayOptions: { anchor: "top-left", width: "100%", nonCapturing: true } },
 			)
