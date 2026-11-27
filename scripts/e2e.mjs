@@ -18,6 +18,11 @@ mkdirSync(join(work, "agent"), { recursive: true });
 execFileSync("node", [join(repo, "scripts/make-session.mjs"), join(work, "session.jsonl"), repo]);
 
 // tmux reads "." and ":" in targets as window/pane separators.
+// Extra extensions to load alongside this one, colon-separated, e.g. to test compatibility.
+const extraExtensions = (process.env.PI_E2E_EXTENSIONS ?? "")
+	.split(":")
+	.filter(Boolean)
+	.map((path) => `-e ${JSON.stringify(resolve(path))}`);
 const tmuxSession = `sticky-e2e-${label.replace(/[.:]/g, "_")}-${process.pid}`;
 const tmux = (...args) => execFileSync("tmux", args, { encoding: "utf8" });
 const delay = (ms) => new Promise((done) => setTimeout(done, ms));
@@ -81,6 +86,7 @@ try {
 		"-ne",
 		"-e",
 		JSON.stringify(repo),
+		...extraExtensions,
 		"--offline",
 		"--tui-mode fullscreen",
 		"--session",

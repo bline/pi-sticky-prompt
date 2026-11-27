@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { Container, type Component } from "@earendil-works/pi-tui";
-import { collectPrompts, readTranscriptView, selectPinnedPrompt } from "../src/transcript.ts";
+import { collectPrompts, promptLineText, readTranscriptView, selectPinnedPrompt } from "../src/transcript.ts";
 
 class Lines implements Component {
 	private readonly lines: string[];
@@ -47,6 +47,56 @@ test("collectPrompts finds each prompt's first non-blank row and its plain text"
 		{ row: 3, text: "first prompt" },
 		{ row: 12, text: "second" },
 	]);
+});
+
+/** Stand-in for pi-libtui's ComponentStack: renders children in order and records their spans. */
+class SpanStack implements Component {
+	private spans: { component: Component; index: number; row: number; height: number; width: number }[] = [];
+	private readonly children: Component[];
+	constructor(children: Component[]) {
+		this.children = children;
+	}
+	render(width: number): string[] {
+		const lines: string[] = [];
+		this.spans = [];
+		this.children.forEach((component, index) => {
+			const rendered = component.render(width);
+			this.spans.push({ component, index, row: lines.length, height: rendered.length, width });
+			lines.push(...rendered);
+		});
+		return lines;
+	}
+	getSpans() {
+		return this.spans.map((span) => ({ ...span }));
+	}
+	invalidate(): void {}
+}
+
+test("collectPrompts descends into span stacks, as mounted by pi-collapse-transcript", () => {
+	const header = new Container();
+	header.addChild(new Lines(["logo"]));
+	const bubble = new Prompt([
+		"\x1b]133;A\x07          ▄▄▄▄▄▄▄▄",
+		"          █ hello █",
+		"          █ world █",
+		"          ▀▀▀▀▀▀▀▀",
+	]);
+	const section = new SpanStack([new Lines(["Worked for 3s · 2 steps"])]);
+	const stack = new SpanStack([new Lines(["intro", ""]), bubble, section, new Prompt(["", "second"])]);
+	const document = new Container();
+	document.addChild(header); // row 0
+	document.addChild(stack); // rows 1-9: intro 1-2, bubble 3-6, section 7, second 8-9
+	document.render(40);
+	assert.deepEqual(collectPrompts(document, isPrompt), [
+		{ row: 4, text: "hello" },
+		{ row: 9, text: "second" },
+	]);
+});
+
+test("promptLineText drops escape codes, whitespace, and block-element framing", () => {
+	assert.equal(promptLineText("   ▄▄▄▄   "), "");
+	assert.equal(promptLineText("\x1b[44m  █ fix █ the █ bug  █\x1b[0m"), "fix █ the █ bug");
+	assert.equal(promptLineText("\x1b[1mplain\x1b[0m prompt "), "plain prompt");
 });
 
 test("collectPrompts returns nothing before the document has rendered", () => {

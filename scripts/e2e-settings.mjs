@@ -13,6 +13,12 @@ rmSync(work, { recursive: true, force: true });
 mkdirSync(join(work, "agent"), { recursive: true });
 execFileSync("node", [join(repo, "scripts/make-session.mjs"), join(work, "session.jsonl"), repo]);
 
+// Extra extensions to load as well, colon-separated, e.g. to test compatibility.
+const extra = (process.env.PI_E2E_EXTENSIONS ?? "")
+	.split(":")
+	.filter(Boolean)
+	.map((path) => ` -e ${JSON.stringify(resolve(path))}`)
+	.join("");
 const name = `sticky-settings-${label.replace(/[.:]/g, "_")}-${process.pid}`;
 const tmux = (...args) => execFileSync("tmux", args, { encoding: "utf8" });
 const delay = (ms) => new Promise((done) => setTimeout(done, ms));
@@ -36,7 +42,7 @@ try {
 		"send-keys",
 		"-t",
 		name,
-		`PI_CODING_AGENT_DIR=${JSON.stringify(join(work, "agent"))} PI_OFFLINE=1 ${JSON.stringify(piBin)} -ne -e ${JSON.stringify(repo)} --offline --tui-mode fullscreen --session ${JSON.stringify(join(work, "session.jsonl"))}`,
+		`PI_CODING_AGENT_DIR=${JSON.stringify(join(work, "agent"))} PI_OFFLINE=1 ${JSON.stringify(piBin)} -ne -e ${JSON.stringify(repo)}${extra} --offline --tui-mode fullscreen --session ${JSON.stringify(join(work, "session.jsonl"))}`,
 		"Enter",
 	);
 	for (let i = 0; i < 100 && !capture().includes("Reply 5, line 30."); i++) await delay(200);

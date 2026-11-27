@@ -57,30 +57,77 @@ function isPlainContainer(component: Component): component is Container {
 }
 
 /**
+ * Geometry a stacking component records for each visible child after rendering. Matches
+ * `ComponentStack.getSpans()` from `@luan.sh/pi-libtui`, which `pi-collapse-transcript` mounts in
+ * place of Pi's chat container. Read by shape, so that package is not a dependency.
+ */
+interface SpanLike {
+	readonly component: Component;
+	readonly row: number;
+	readonly height: number;
+	readonly width: number;
+}
+
+function spansOf(component: Component): readonly SpanLike[] | undefined {
+	const getSpans = (component as { getSpans?: unknown }).getSpans;
+	if (typeof getSpans !== "function") return undefined;
+	const spans: unknown = getSpans.call(component);
+	if (!Array.isArray(spans)) return undefined;
+	const valid = spans.every(
+		(span: Partial<SpanLike> | null) =>
+			!!span &&
+			typeof span.component?.render === "function" &&
+			typeof span.row === "number" &&
+			typeof span.height === "number" &&
+			typeof span.width === "number",
+	);
+	return valid ? (spans as SpanLike[]) : undefined;
+}
+
+/** Block elements (▀▄█ and others) that frame prompts, such as pi-libtui's message bubbles. */
+const EDGE = /^[\s\u2580-\u259f]+|[\s\u2580-\u259f]+$/gu;
+
+/** Plain prompt text of one rendered row, without escape codes or framing; empty for frame rows. */
+export function promptLineText(line: string): string {
+	return stripTerminalSequences(line).replace(EDGE, "");
+}
+
+/**
  * Find prompt rows in the last rendered layout of `document`, in transcript order.
- * Descends only into plain containers, whose output is the concatenation of their children.
+ * Descends into plain containers, whose output is the concatenation of their children, and into
+ * components that report child spans.
  */
 export function collectPrompts(document: Container, isPrompt: (component: Component) => boolean): PromptAnchor[] {
 	const prompts: PromptAnchor[] = [];
-	const visit = (container: Container, base: number): void => {
-		const layout = childLinesOf(container);
-		if (!layout) return;
-		let row = base;
-		for (let index = 0; index < layout.children.length; index++) {
-			const child = layout.children[index]!;
-			const lines = layout.parts[index]!;
-			if (isPrompt(child)) {
-				for (let offset = 0; offset < lines.length; offset++) {
-					const text = stripTerminalSequences(lines[offset]!).trim();
-					if (text) {
-						prompts.push({ row: row + offset, text });
-						break;
-					}
-				}
-			} else if (isPlainContainer(child)) {
-				visit(child, row);
+	const child = (component: Component, row: number, lines: () => readonly string[]): void => {
+		if (!isPrompt(component)) {
+			visit(component, row);
+			return;
+		}
+		const rendered = lines();
+		for (let offset = 0; offset < rendered.length; offset++) {
+			const text = promptLineText(rendered[offset]!);
+			if (text) {
+				prompts.push({ row: row + offset, text });
+				return;
 			}
-			row += lines.length;
+		}
+	};
+	const visit = (component: Component, base: number): void => {
+		if (isPlainContainer(component)) {
+			const layout = childLinesOf(component);
+			if (!layout) return;
+			let row = base;
+			for (let index = 0; index < layout.children.length; index++) {
+				const lines = layout.parts[index]!;
+				child(layout.children[index]!, row, () => lines);
+				row += lines.length;
+			}
+			return;
+		}
+		for (const span of spansOf(component) ?? []) {
+			// Spans hold no lines; prompt components return their cached render for the same width.
+			child(span.component, base + span.row, () => span.component.render(span.width).slice(0, span.height));
 		}
 	};
 	visit(document, 0);

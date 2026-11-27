@@ -41,7 +41,12 @@ function firstReply(screen) {
 let result;
 try {
 	tmux("new-session", "-d", "-s", name, "-x", "100", "-y", "30");
-	const extension = withExtension ? `-e ${JSON.stringify(repo)}` : "";
+	// Extra extensions to load as well, colon-separated, e.g. to test compatibility.
+	const extra = (process.env.PI_E2E_EXTENSIONS ?? "")
+		.split(":")
+		.filter(Boolean)
+		.map((path) => `-e ${JSON.stringify(resolve(path))}`);
+	const extension = [withExtension ? `-e ${JSON.stringify(repo)}` : "", ...extra].join(" ");
 	tmux(
 		"send-keys",
 		"-t",
